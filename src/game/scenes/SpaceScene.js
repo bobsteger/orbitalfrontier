@@ -22,6 +22,12 @@ import '@babylonjs/core/Lights/hemisphericLight';
 import '@babylonjs/core/Lights/pointLight';
 import '@babylonjs/core/Layers/effectLayer';
 
+// Camera view modes
+export const CAMERA_MODES = {
+  FIRST_PERSON: 'first_person',
+  THIRD_PERSON: 'third_person'
+};
+
 export class SpaceScene {
   constructor(engine, inputManager, gameState) {
     this.engine = engine;
@@ -37,6 +43,9 @@ export class SpaceScene {
     this.celestialBodies = {};
     this.lastTime = performance.now();
     this.nearbyStation = null;
+
+    // Camera view mode
+    this.cameraMode = CAMERA_MODES.FIRST_PERSON;
   }
 
   async initialize(onProgress) {
@@ -285,9 +294,77 @@ export class SpaceScene {
   }
 
   setupCameraFollow() {
-    // Camera offset from ship (first person cockpit view)
-    this.cameraOffset = new Vector3(0, 0.8, 2.5); // Inside cockpit, looking forward
-    this.cameraLerpSpeed = 15; // Faster follow for first person
+    // Camera offsets for different view modes
+    this.firstPersonOffset = new Vector3(0, 0.8, 2.5); // Inside cockpit, looking forward
+    this.thirdPersonOffset = new Vector3(0, 8, -25); // Behind and above ship
+
+    // Setup view mode toggle (V key)
+    this.setupViewModeToggle();
+
+    // Apply initial view mode
+    this.applyCameraMode();
+  }
+
+  setupViewModeToggle() {
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'KeyV') {
+        this.toggleCameraMode();
+      }
+    });
+  }
+
+  toggleCameraMode() {
+    if (this.cameraMode === CAMERA_MODES.FIRST_PERSON) {
+      this.cameraMode = CAMERA_MODES.THIRD_PERSON;
+    } else {
+      this.cameraMode = CAMERA_MODES.FIRST_PERSON;
+    }
+    this.applyCameraMode();
+  }
+
+  applyCameraMode() {
+    if (this.cameraMode === CAMERA_MODES.FIRST_PERSON) {
+      // First person: hide ship, show HUD
+      if (this.playerShip && this.playerShip.mesh) {
+        this.setShipVisibility(false);
+      }
+      if (this.hud) {
+        this.hud.setVisible(true);
+      }
+    } else {
+      // Third person: show ship, hide HUD
+      if (this.playerShip && this.playerShip.mesh) {
+        this.setShipVisibility(true);
+      }
+      if (this.hud) {
+        this.hud.setVisible(false);
+      }
+    }
+  }
+
+  setShipVisibility(visible) {
+    if (!this.playerShip || !this.playerShip.mesh) return;
+
+    this.playerShip.mesh.isVisible = visible;
+
+    // Also set visibility for child meshes
+    const children = this.playerShip.mesh.getChildMeshes();
+    children.forEach(child => {
+      child.isVisible = visible;
+    });
+
+    // Handle loaded model meshes if any
+    if (this.playerShip.loadedMeshes) {
+      this.playerShip.loadedMeshes.forEach(mesh => {
+        mesh.isVisible = visible;
+      });
+    }
+
+    // Engine glow visibility
+    if (this.playerShip.engineGlow) {
+      this.playerShip.engineGlow.left.isVisible = visible;
+      this.playerShip.engineGlow.right.isVisible = visible;
+    }
   }
 
   registerNavObjects() {
@@ -333,8 +410,8 @@ export class SpaceScene {
     // Update camera position to follow ship
     this.updateCamera(deltaTime);
 
-    // Update HUD
-    if (this.hud) {
+    // Update HUD (only in first-person mode)
+    if (this.hud && this.cameraMode === CAMERA_MODES.FIRST_PERSON) {
       this.hud.update(deltaTime);
       this.hud.updateNavLabels(this.camera);
     }
@@ -342,7 +419,7 @@ export class SpaceScene {
     // Rotate celestial bodies
     this.updateCelestialBodies(deltaTime);
 
-    // Check for station proximity
+    // Check for station proximity (only show docking prompt in first-person)
     this.checkStationProximity();
   }
 
@@ -371,28 +448,50 @@ export class SpaceScene {
     const shipPosition = this.playerShip.mesh.position;
     const shipRotation = this.playerShip.mesh.rotationQuaternion;
 
-    // Calculate camera position inside cockpit
-    const offset = this.cameraOffset.clone();
-    if (shipRotation) {
-      offset.rotateByQuaternionToRef(shipRotation, offset);
+    if (this.cameraMode === CAMERA_MODES.FIRST_PERSON) {
+      // First person: camera locked inside cockpit, no lerp (instant follow)
+      const offset = this.firstPersonOffset.clone();
+      if (shipRotation) {
+        offset.rotateByQuaternionToRef(shipRotation, offset);
+      }
+
+      // Instant position update - no velocity-dependent movement
+      this.camera.position = shipPosition.add(offset);
+
+      // Camera looks forward in ship's direction
+      const forward = this.playerShip.getForward();
+      const lookTarget = this.camera.position.add(forward.scale(100));
+      this.camera.setTarget(lookTarget);
+
+    } else {
+      // Third person: camera behind and above ship, smooth follow
+      const offset = this.thirdPersonOffset.clone();
+      if (shipRotation) {
+        offset.rotateByQuaternionToRef(shipRotation, offset);
+      }
+
+      const targetPosition = shipPosition.add(offset);
+
+      // Smooth follow for third person (adds cinematic feel)
+      this.camera.position = Vector3.Lerp(
+        this.camera.position,
+        targetPosition,
+        8 * deltaTime
+      );
+
+      // Look at the ship (slightly above center for better framing)
+      const lookOffset = new Vector3(0, 2, 0);
+      if (shipRotation) {
+        lookOffset.rotateByQuaternionToRef(shipRotation, lookOffset);
+      }
+      const lookTarget = shipPosition.add(lookOffset);
+      this.camera.setTarget(lookTarget);
     }
 
-    const targetPosition = shipPosition.add(offset);
-
-    // Smooth camera follow (faster for first person)
-    this.camera.position = Vector3.Lerp(
-      this.camera.position,
-      targetPosition,
-      this.cameraLerpSpeed * deltaTime
-    );
-
-    // Camera looks forward in ship's direction
-    const forward = this.playerShip.getForward();
-    const lookTarget = this.camera.position.add(forward.scale(100));
-    this.camera.setTarget(lookTarget);
-
-    // Update target identification
-    this.updateTargetIdentification();
+    // Update target identification (only relevant in first person)
+    if (this.cameraMode === CAMERA_MODES.FIRST_PERSON) {
+      this.updateTargetIdentification();
+    }
   }
 
   updateTargetIdentification() {

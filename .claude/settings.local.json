@@ -7,7 +7,9 @@
       "Bash(timeout:*)",
       "Bash(npx vite build)",
       "Bash(curl:*)",
-      "Bash(del \"C:\\\\Users\\\\Work\\\\OneDrive\\\\Documents\\\\Code\\\\OrbitalFrontier\\\\assets\\\\textures\\\\.gitkeep\")"
+      "Bash(del \"C:\\\\Users\\\\Work\\\\OneDrive\\\\Documents\\\\Code\\\\OrbitalFrontier\\\\assets\\\\textures\\\\.gitkeep\")",
+      "Bash(git status:*)",
+      "Bash(git push:*)"
     ]
   }
 }

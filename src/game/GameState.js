@@ -12,13 +12,13 @@ export class GameState {
 
     // Player ship state
     this.ship = {
-      type: 'wanderer',
-      hull: 100,
-      maxHull: 100,
+      type: 'transport',
+      hull: 300,
+      maxHull: 300,
       shield: 50,
       maxShield: 50,
       cargo: [],
-      cargoCapacity: 50,
+      cargoCapacity: 500,
       fuel: 100,
       maxFuel: 100
     };

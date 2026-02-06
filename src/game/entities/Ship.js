@@ -3,6 +3,8 @@ import { Color3 } from '@babylonjs/core/Maths/math.color';
 import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder';
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
 import { Mesh } from '@babylonjs/core/Meshes/mesh';
+import { SceneLoader } from '@babylonjs/core/Loading/sceneLoader';
+import '@babylonjs/loaders/glTF';
 
 // Ship types and their stats
 export const SHIP_TYPES = {
@@ -38,6 +40,39 @@ export const SHIP_TYPES = {
     maxShield: 30,
     cargoCapacity: 200,
     hardpoints: 1
+  },
+  transport: {
+    name: 'Transport',
+    class: 'Freighter',
+    mass: 5000,
+    thrust: 10000,
+    agility: 0.5,
+    maxHull: 300,
+    maxShield: 50,
+    cargoCapacity: 500,
+    hardpoints: 2
+  }
+};
+
+// Ship design configurations - maps ship types to their visual representation
+export const SHIP_DESIGNS = {
+  wanderer: {
+    type: 'procedural',
+    design: 'default'
+  },
+  talon: {
+    type: 'procedural',
+    design: 'default'
+  },
+  hauler: {
+    type: 'procedural',
+    design: 'default'
+  },
+  transport: {
+    type: 'model',
+    modelPath: 'assets/models/futuristic_transport_ship.glb',
+    scale: new Vector3(1, 1, 1),
+    rotation: new Vector3(0, 0, 0)
   }
 };
 
@@ -46,22 +81,119 @@ export class Ship {
     this.scene = scene;
     this.state = shipState;
     this.type = SHIP_TYPES[shipState.type] || SHIP_TYPES.wanderer;
+    this.design = SHIP_DESIGNS[shipState.type] || SHIP_DESIGNS.wanderer;
 
     // Physics state
     this.velocity = Vector3.Zero();
     this.angularVelocity = Vector3.Zero();
 
-    // Create ship mesh
+    // Model loading state
+    this.modelLoaded = false;
+    this.loadedMeshes = null;
+
+    // Create ship mesh (procedural placeholder or final mesh)
     this.mesh = this.createShipMesh();
+
+    // Load GLB model if this ship type uses one
+    if (this.design.type === 'model') {
+      this.loadShipModel();
+    } else {
+      this.modelLoaded = true;
+    }
 
     // Engine particles (visual feedback for thrust)
     this.engineGlow = this.createEngineGlow();
     this.thrustLevel = 0;
   }
 
+  async loadShipModel() {
+    try {
+      const result = await SceneLoader.ImportMeshAsync(
+        '',
+        '',
+        this.design.modelPath,
+        this.scene
+      );
+
+      this.loadedMeshes = result.meshes;
+
+      // Find the root mesh (usually __root__ or the first mesh)
+      const rootMesh = result.meshes[0];
+
+      // Store current position and rotation from placeholder
+      const currentPosition = this.mesh.position.clone();
+      const currentRotation = this.mesh.rotationQuaternion ?
+        this.mesh.rotationQuaternion.clone() : Quaternion.Identity();
+
+      // Dispose of placeholder mesh and its children
+      this.mesh.getChildMeshes().forEach(child => child.dispose());
+      this.mesh.dispose();
+
+      // Set up the loaded model
+      this.mesh = rootMesh;
+      this.mesh.position = currentPosition;
+      this.mesh.rotationQuaternion = currentRotation;
+
+      // Apply design scale and rotation adjustments
+      if (this.design.scale) {
+        this.mesh.scaling = this.design.scale.clone();
+      }
+      if (this.design.rotation) {
+        const adjustQuat = Quaternion.FromEulerAngles(
+          this.design.rotation.x,
+          this.design.rotation.y,
+          this.design.rotation.z
+        );
+        this.mesh.rotationQuaternion = currentRotation.multiply(adjustQuat);
+      }
+
+      // Recreate engine glow for the new mesh
+      if (this.engineGlow) {
+        this.engineGlow.left.dispose();
+        this.engineGlow.right.dispose();
+        this.engineGlow = this.createEngineGlow();
+      }
+
+      this.modelLoaded = true;
+      console.log(`Loaded ship model: ${this.design.modelPath}`);
+    } catch (error) {
+      console.error(`Failed to load ship model: ${this.design.modelPath}`, error);
+      // Keep using placeholder mesh on failure
+      this.modelLoaded = true;
+    }
+  }
+
   createShipMesh() {
+    // Check if this ship type uses a custom model
+    if (this.design.type === 'model') {
+      // Create a simple placeholder while the model loads
+      return this.createPlaceholderMesh();
+    }
+
+    // Create procedural ship mesh based on design type
+    return this.createProceduralMesh();
+  }
+
+  createPlaceholderMesh() {
+    // Simple box placeholder while model loads
+    const placeholder = MeshBuilder.CreateBox('shipPlaceholder', {
+      width: 4,
+      height: 2,
+      depth: 6
+    }, this.scene);
+
+    const placeholderMaterial = new StandardMaterial('placeholderMat', this.scene);
+    placeholderMaterial.diffuseColor = new Color3(0.3, 0.3, 0.3);
+    placeholderMaterial.alpha = 0.5;
+    placeholder.material = placeholderMaterial;
+
+    placeholder.rotationQuaternion = Quaternion.Identity();
+
+    return placeholder;
+  }
+
+  createProceduralMesh() {
     // Create a simple ship shape using primitives
-    // In production, this would load a GLTF model
 
     // Main hull (elongated octahedron-like shape)
     const hull = MeshBuilder.CreatePolyhedron('shipHull', {
@@ -211,6 +343,35 @@ export class Ship {
   }
 
   dispose() {
-    this.mesh.dispose();
+    // Dispose engine glow
+    if (this.engineGlow) {
+      this.engineGlow.left.dispose();
+      this.engineGlow.right.dispose();
+      if (this.engineGlow.material) {
+        this.engineGlow.material.dispose();
+      }
+    }
+
+    // Dispose loaded model meshes
+    if (this.loadedMeshes) {
+      this.loadedMeshes.forEach(mesh => {
+        if (mesh.material) {
+          mesh.material.dispose();
+        }
+        mesh.dispose();
+      });
+    } else {
+      // Dispose procedural mesh and children
+      this.mesh.getChildMeshes().forEach(child => {
+        if (child.material) {
+          child.material.dispose();
+        }
+        child.dispose();
+      });
+      if (this.mesh.material) {
+        this.mesh.material.dispose();
+      }
+      this.mesh.dispose();
+    }
   }
 }

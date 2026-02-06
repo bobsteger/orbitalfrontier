@@ -16,6 +16,8 @@ export class HUD {
     this.navLabelsVisible = true;
     this.navLabels = [];
     this.navObjects = []; // Will be populated with stations and celestial bodies
+    this.isVisible = true;
+    this.hudElements = []; // Track all HUD elements for visibility toggle
 
     // Create fullscreen GUI
     this.gui = AdvancedDynamicTexture.CreateFullscreenUI('HUD', true, scene);
@@ -34,6 +36,31 @@ export class HUD {
     this.createDockingPrompt();
   }
 
+  setVisible(visible) {
+    this.isVisible = visible;
+
+    // Toggle all tracked HUD elements
+    for (const element of this.hudElements) {
+      element.isVisible = visible;
+    }
+
+    // Also toggle nav labels
+    if (visible) {
+      this.updateNavLabelsVisibility();
+    } else {
+      for (const navLabel of this.navLabels) {
+        navLabel.circle.isVisible = false;
+        navLabel.line.isVisible = false;
+        navLabel.label.isVisible = false;
+      }
+    }
+
+    // Nav status text
+    if (this.navStatusText) {
+      this.navStatusText.isVisible = visible;
+    }
+  }
+
   createCockpitFrame() {
     // Top frame bar
     const topBar = new Rectangle('topBar');
@@ -43,6 +70,7 @@ export class HUD {
     topBar.thickness = 0;
     topBar.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
     this.gui.addControl(topBar);
+    this.hudElements.push(topBar);
 
     // Bottom frame bar
     const bottomBar = new Rectangle('bottomBar');
@@ -52,6 +80,7 @@ export class HUD {
     bottomBar.thickness = 0;
     bottomBar.verticalAlignment = Control.VERTICAL_ALIGNMENT_BOTTOM;
     this.gui.addControl(bottomBar);
+    this.hudElements.push(bottomBar);
 
     // Left frame
     const leftBar = new Rectangle('leftBar');
@@ -61,6 +90,7 @@ export class HUD {
     leftBar.thickness = 0;
     leftBar.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     this.gui.addControl(leftBar);
+    this.hudElements.push(leftBar);
 
     // Right frame
     const rightBar = new Rectangle('rightBar');
@@ -70,6 +100,7 @@ export class HUD {
     rightBar.thickness = 0;
     rightBar.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
     this.gui.addControl(rightBar);
+    this.hudElements.push(rightBar);
 
     // Corner accents
     this.createCornerAccent('topLeft', Control.HORIZONTAL_ALIGNMENT_LEFT, Control.VERTICAL_ALIGNMENT_TOP);
@@ -93,6 +124,7 @@ export class HUD {
     corner.top = vAlign === Control.VERTICAL_ALIGNMENT_TOP ? '20px' : '-20px';
 
     this.gui.addControl(corner);
+    this.hudElements.push(corner);
   }
 
   createTargetingReticle() {
@@ -104,6 +136,7 @@ export class HUD {
     outerCircle.thickness = 1;
     outerCircle.background = 'transparent';
     this.gui.addControl(outerCircle);
+    this.hudElements.push(outerCircle);
 
     // Inner targeting circle
     const innerCircle = new Ellipse('innerCircle');
@@ -113,6 +146,7 @@ export class HUD {
     innerCircle.thickness = 1;
     innerCircle.background = 'transparent';
     this.gui.addControl(innerCircle);
+    this.hudElements.push(innerCircle);
 
     // Crosshair lines
     const lineLength = 15;
@@ -125,6 +159,7 @@ export class HUD {
     topLine.background = 'rgba(79, 195, 247, 0.9)';
     topLine.top = `-${gap + lineLength/2}px`;
     this.gui.addControl(topLine);
+    this.hudElements.push(topLine);
 
     // Bottom line
     const bottomLine = new Rectangle('bottomLine');
@@ -133,6 +168,7 @@ export class HUD {
     bottomLine.background = 'rgba(79, 195, 247, 0.9)';
     bottomLine.top = `${gap + lineLength/2}px`;
     this.gui.addControl(bottomLine);
+    this.hudElements.push(bottomLine);
 
     // Left line
     const leftLine = new Rectangle('leftLine');
@@ -141,6 +177,7 @@ export class HUD {
     leftLine.background = 'rgba(79, 195, 247, 0.9)';
     leftLine.left = `-${gap + lineLength/2}px`;
     this.gui.addControl(leftLine);
+    this.hudElements.push(leftLine);
 
     // Right line
     const rightLine = new Rectangle('rightLine');
@@ -149,6 +186,7 @@ export class HUD {
     rightLine.background = 'rgba(79, 195, 247, 0.9)';
     rightLine.left = `${gap + lineLength/2}px`;
     this.gui.addControl(rightLine);
+    this.hudElements.push(rightLine);
 
     // Center dot
     const centerDot = new Ellipse('centerDot');
@@ -157,6 +195,7 @@ export class HUD {
     centerDot.background = 'rgba(79, 195, 247, 1)';
     centerDot.thickness = 0;
     this.gui.addControl(centerDot);
+    this.hudElements.push(centerDot);
   }
 
   createTargetDisplay() {
@@ -171,6 +210,7 @@ export class HUD {
     this.targetPanel.top = '80px';
     this.targetPanel.isVisible = false;
     this.gui.addControl(this.targetPanel);
+    this.hudElements.push(this.targetPanel);
 
     // Target name
     this.targetName = new TextBlock('targetName');
@@ -214,6 +254,7 @@ export class HUD {
     flightPanel.verticalAlignment = Control.VERTICAL_ALIGNMENT_BOTTOM;
     flightPanel.top = '-15px';
     this.gui.addControl(flightPanel);
+    this.hudElements.push(flightPanel);
 
     // Speed value (large, center)
     this.speedText = new TextBlock('speedText');
@@ -277,6 +318,7 @@ export class HUD {
     statusPanel.left = '20px';
     statusPanel.top = '-15px';
     this.gui.addControl(statusPanel);
+    this.hudElements.push(statusPanel);
 
     const stack = new StackPanel();
     stack.isVertical = true;
@@ -349,6 +391,7 @@ export class HUD {
     creditsPanel.left = '-20px';
     creditsPanel.top = '20px';
     this.gui.addControl(creditsPanel);
+    this.hudElements.push(creditsPanel);
 
     this.creditsText = new TextBlock('creditsText');
     this.creditsText.text = '10,000 CR';
@@ -370,6 +413,7 @@ export class HUD {
     compassPanel.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
     compassPanel.top = '20px';
     this.gui.addControl(compassPanel);
+    this.hudElements.push(compassPanel);
 
     // Location name
     this.locationText = new TextBlock('locationText');
@@ -392,6 +436,7 @@ export class HUD {
     this.dockingPanel.top = '160px';
     this.dockingPanel.isVisible = false;
     this.gui.addControl(this.dockingPanel);
+    this.hudElements.push(this.dockingPanel);
 
     this.dockingText = new TextBlock('dockingText');
     this.dockingText.text = 'PRESS [ENTER] TO DOCK';
